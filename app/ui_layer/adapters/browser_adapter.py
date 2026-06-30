@@ -1564,6 +1564,19 @@ A quick Q&A will now begin to understand your objectives to serve you better:"""
             task_id = data.get("taskId", "")
             await self._handle_task_cancel(task_id)
 
+        # Web Agent browser — direct human control of the live browser view.
+        elif msg_type == "browser_user_input":
+            await self._handle_browser_user_input(data.get("event", {}))
+
+        elif msg_type == "browser_resize":
+            await self._handle_browser_resize(
+                data.get("width", 0), data.get("height", 0)
+            )
+
+        elif msg_type == "browser_nav":
+            # URL bar / reload / back / forward — drive the page directly.
+            await self._handle_browser_nav(data.get("target", ""))
+
         elif msg_type == "task_complete":
             task_id = data.get("taskId", "")
             await self._handle_task_complete(task_id)
@@ -3495,6 +3508,36 @@ A quick Q&A will now begin to understand your objectives to serve you better:"""
                 "data": {"projectId": project_id},
             }
         )
+
+    async def _handle_browser_user_input(self, event: Dict[str, Any]) -> None:
+        """Forward a human interaction to the Web Agent's live browser."""
+        try:
+            from app.browser.web_agent import get_session
+
+            await get_session().user_input(event or {})
+        except Exception as e:
+            logger.debug(f"[WebAgent] user input failed: {e}")
+
+    async def _handle_browser_resize(self, width: Any, height: Any) -> None:
+        """Resize the Web Agent browser so the live view fills the panel."""
+        try:
+            from app.browser.web_agent import get_session
+
+            await get_session().set_viewport(int(width or 0), int(height or 0))
+        except Exception as e:
+            logger.debug(f"[WebAgent] resize failed: {e}")
+
+    async def _handle_browser_nav(self, target: str) -> None:
+        """Navigate the Web Agent browser directly (URL bar / reload / back / forward)."""
+        target = (target or "").strip()
+        if not target:
+            return
+        try:
+            from app.browser.web_agent import get_session
+
+            await get_session().navigate(target)
+        except Exception as e:
+            logger.debug(f"[WebAgent] nav failed: {e}")
 
     async def _handle_task_cancel(self, task_id: str) -> None:
         """Cancel a running task."""

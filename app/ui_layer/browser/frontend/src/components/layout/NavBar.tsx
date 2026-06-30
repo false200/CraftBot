@@ -4,6 +4,7 @@ import {
   MessageSquare,
   ListTodo,
   LayoutDashboard,
+  Globe,
   FolderOpen,
   Settings,
   Sparkles,
@@ -30,6 +31,7 @@ const leftNavItems: NavItem[] = [
   { id: 'chat', label: 'Chat', icon: <MessageSquare size={16} />, path: '/' },
   { id: 'tasks', label: 'Tasks', icon: <ListTodo size={16} />, path: '/tasks' },
   { id: 'dashboard', label: 'Dashboard', icon: <LayoutDashboard size={16} />, path: '/dashboard' },
+  { id: 'web-agent', label: 'Web Agent', icon: <Globe size={16} />, path: '/web-agent' },
   { id: 'workspace', label: 'Workspace', icon: <FolderOpen size={16} />, path: '/workspace' },
 ]
 

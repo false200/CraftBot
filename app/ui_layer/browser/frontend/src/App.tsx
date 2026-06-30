@@ -5,6 +5,7 @@ import { ChatPage } from './pages/Chat'
 import { TasksPage } from './pages/Tasks'
 import { DashboardPage } from './pages/Dashboard'
 import { ScreenPage } from './pages/Screen'
+import { WebAgentPage } from './pages/WebAgent'
 import { WorkspacePage } from './pages/Workspace'
 import { SettingsPage } from './pages/Settings'
 import { OnboardingPage } from './pages/Onboarding'
@@ -62,6 +63,7 @@ function App() {
         <Route path="/tasks" element={<TasksPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
         <Route path="/screen" element={<ScreenPage />} />
+        <Route path="/web-agent" element={<WebAgentPage />} />
         <Route path="/workspace" element={<WorkspacePage />} />
         <Route path="/settings" element={<SettingsPage />} />
         <Route path="/living-ui/:projectId" element={<LivingUIPage />} />

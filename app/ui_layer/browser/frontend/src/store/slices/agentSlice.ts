@@ -15,6 +15,10 @@ interface AgentSliceState {
   currentTask: { id: string; name: string } | null
   guiMode: boolean
   footageUrl: string | null
+  // Live view of the Web Agent's Chromium browser (separate from GUI footage).
+  browserFrame: string | null
+  browserUrl: string
+  browserTitle: string
   skillMeta: SkillMeta
 }
 
@@ -26,6 +30,9 @@ const initialState: AgentSliceState = {
   currentTask: null,
   guiMode: false,
   footageUrl: null,
+  browserFrame: null,
+  browserUrl: '',
+  browserTitle: '',
   skillMeta: {
     internalWorkflowIds: [],
     internalSkillNames: [],
@@ -53,6 +60,19 @@ const agentSlice = createSlice({
     setGuiMode(state, action: PayloadAction<boolean>) {
       state.guiMode = action.payload
     },
+    setBrowserFrame(
+      state,
+      action: PayloadAction<{ image: string; url?: string; title?: string }>
+    ) {
+      state.browserFrame = action.payload.image
+      if (action.payload.url !== undefined) state.browserUrl = action.payload.url
+      if (action.payload.title !== undefined) state.browserTitle = action.payload.title
+    },
+    clearBrowserFrame(state) {
+      state.browserFrame = null
+      state.browserUrl = ''
+      state.browserTitle = ''
+    },
     setSkillMeta(state, action: PayloadAction<SkillMeta>) {
       state.skillMeta = action.payload
     },
@@ -72,6 +92,8 @@ export const {
   setCurrentTask,
   setFootageUrl,
   setGuiMode,
+  setBrowserFrame,
+  clearBrowserFrame,
   setSkillMeta,
   setName,
   setProfilePicture,
@@ -114,6 +136,11 @@ register('footage_clear', (_data, dispatch) => {
 register('footage_visibility', (data, dispatch) => {
   const { visible } = data as { visible: boolean }
   dispatch(setGuiMode(visible))
+})
+
+register('browser_frame', (data, dispatch) => {
+  const { image, url, title } = data as { image: string; url?: string; title?: string }
+  dispatch(setBrowserFrame({ image, url, title }))
 })
 
 register('skill_meta', (data, dispatch) => {

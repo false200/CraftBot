@@ -2812,8 +2812,24 @@ class AgentBase:
         Returns:
             Task ID if created, None if not needed or already in progress
         """
+        import os
+
         from app.onboarding import onboarding_manager
         from app.onboarding.soft.task_creator import create_soft_onboarding_task
+
+        # The auto "User Profile Interview" grabs the conversation with the
+        # highest priority and blocks the user's real requests (e.g. a Web Agent
+        # search) until they answer personal questions. It's now opt-in. An
+        # explicit /onboarding command (reset=True) still runs it on demand.
+        if not reset and os.getenv("CRAFTBOT_PROFILE_INTERVIEW", "off").lower() not in (
+            "1", "true", "on", "yes",
+        ):
+            logger.info(
+                "[ONBOARDING] Auto profile interview is disabled "
+                "(set CRAFTBOT_PROFILE_INTERVIEW=on to re-enable)."
+            )
+            self._soft_onboarding_triggered = True
+            return None
 
         # Prevent double-triggering (multiple adapters/paths may call this)
         if not reset and self._soft_onboarding_triggered:

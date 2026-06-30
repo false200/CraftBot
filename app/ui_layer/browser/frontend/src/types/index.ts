@@ -85,6 +85,7 @@ export type WSMessageType =
   | 'footage_update'
   | 'footage_clear'
   | 'footage_visibility'
+  | 'browser_frame'
   | 'state_update'
   | 'dashboard_metrics'
   | 'dashboard_metrics_filter'

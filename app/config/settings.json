@@ -18,7 +18,7 @@
     "vlm_provider": "anthropic",
     "llm_model": "claude-sonnet-4-5-20250929",
     "vlm_model": "claude-sonnet-4-5-20250929",
-    "slow_mode": true,
+    "slow_mode": false,
     "slow_mode_tpm_limit": 25000
   },
   "api_keys": {
