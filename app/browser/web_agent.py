@@ -115,6 +115,21 @@ _CURSOR_JS = r"""
 """
 
 
+# Ad / tracker networks blocked when the built-in ad blocker is on. Kept to
+# clear ad/analytics networks so we don't break site logins or core features.
+_ADBLOCK_DOMAINS = {
+    "doubleclick.net", "googlesyndication.com", "googleadservices.com",
+    "google-analytics.com", "googletagservices.com", "adservice.google.com",
+    "amazon-adsystem.com", "adnxs.com", "adsafeprotected.com",
+    "scorecardresearch.com", "taboola.com", "outbrain.com", "criteo.com",
+    "criteo.net", "pubmatic.com", "rubiconproject.com", "openx.net",
+    "moatads.com", "2mdn.net", "adform.net", "casalemedia.com", "quantserve.com",
+    "zedo.com", "yieldmo.com", "doubleverify.com", "teads.tv",
+    "smartadserver.com", "3lift.com", "bidswitch.net", "sharethrough.com",
+    "gumgum.com", "indexww.com", "adcolony.com", "applovin.com", "mgid.com",
+}
+
+
 class WebAgentSession:
     """A persistent Playwright Chromium page the agent operates on."""
 
@@ -133,6 +148,10 @@ class WebAgentSession:
         # so the user stays signed in across restarts (real-browser behaviour).
         # Show a moving cursor + typing animation so agent actions look human.
         self._show_cursor = os.getenv("WEB_AGENT_SHOW_CURSOR", "True").lower() not in (
+            "0", "false", "no",
+        )
+        # Built-in ad/tracker blocker (toggleable from the UI).
+        self._adblock_enabled = os.getenv("WEB_AGENT_ADBLOCK", "True").lower() not in (
             "0", "false", "no",
         )
 
@@ -193,6 +212,14 @@ class WebAgentSession:
                 await self._context.add_init_script(f"({_CURSOR_JS})()")
             except Exception as exc:
                 logger.debug("[WebAgent] cursor init script failed: %s", exc)
+
+        # Built-in ad blocker: intercept every request and abort ad/tracker
+        # domains while enabled. The handler checks the flag live, so the toggle
+        # works without re-registering.
+        try:
+            await self._context.route("**/*", self._route_handler)
+        except Exception as exc:
+            logger.debug("[WebAgent] adblock route failed: %s", exc)
         # Follow popups / new tabs (OAuth & login flows open these) by streaming
         # whichever page is frontmost.
         self._context.on("page", self._on_new_page)
@@ -221,6 +248,7 @@ class WebAgentSession:
         logger.info("[WebAgent] new tab/popup opened: %s", getattr(page, "url", "?"))
         self._page = page
         self._track_page(page)
+        self._schedule_tabs()
 
     def _track_page(self, page: Any) -> None:
         """When a page closes, fall back to another open page."""
@@ -479,6 +507,7 @@ class WebAgentSession:
                     await page.goto(url, timeout=timeout_ms, wait_until="domcontentloaded")
                 await self._ensure_cursor()
                 self._schedule_frame()
+                self._schedule_tabs()
                 return {
                     "status": "success",
                     "url": page.url,
@@ -729,6 +758,163 @@ class WebAgentSession:
                 }
             except Exception as exc:
                 return {"status": "error", "message": str(exc)}
+
+    # ── ad blocker ────────────────────────────────────────────────────────────
+
+    async def _route_handler(self, route: Any) -> None:
+        """Abort requests to ad/tracker domains while the ad blocker is on."""
+        try:
+            if self._adblock_enabled:
+                from urllib.parse import urlparse
+
+                host = (urlparse(route.request.url).hostname or "").lower()
+                if any(
+                    host == d or host.endswith("." + d) for d in _ADBLOCK_DOMAINS
+                ):
+                    await route.abort()
+                    return
+            await route.continue_()
+        except Exception:
+            try:
+                await route.continue_()
+            except Exception:
+                pass
+
+    async def _broadcast_adblock(self) -> None:
+        from app.internal_action_interface import InternalActionInterface
+
+        adapter = InternalActionInterface.ui_adapter
+        if adapter is None or not hasattr(adapter, "_broadcast"):
+            return
+        try:
+            await adapter._broadcast(
+                {"type": "browser_adblock", "data": {"enabled": self._adblock_enabled}}
+            )
+        except Exception as exc:
+            logger.debug("[WebAgent] adblock broadcast failed: %s", exc)
+
+    async def broadcast_adblock(self) -> None:
+        """Public: report the current ad-blocker state to the UI."""
+        await self._broadcast_adblock()
+
+    async def set_adblock(self, enabled: bool) -> Dict[str, Any]:
+        """Turn the ad blocker on/off and reload the page so it takes effect."""
+        self._adblock_enabled = bool(enabled)
+        async with self._lock:
+            if self._page is not None:
+                try:
+                    await self._page.reload(
+                        wait_until="domcontentloaded", timeout=15000
+                    )
+                except Exception:
+                    pass
+                await self._stream_frame()
+        await self._broadcast_adblock()
+        return {"status": "success", "enabled": self._adblock_enabled}
+
+    # ── tabs ──────────────────────────────────────────────────────────────────
+
+    def _open_pages(self) -> List[Any]:
+        if self._context is None:
+            return []
+        return [p for p in self._context.pages if not p.is_closed()]
+
+    async def _tabs_payload(self) -> List[Dict[str, Any]]:
+        tabs = []
+        for i, p in enumerate(self._open_pages()):
+            try:
+                title = await p.title()
+            except Exception:
+                title = ""
+            tabs.append(
+                {
+                    "index": i,
+                    "url": p.url,
+                    "title": title or p.url or "New tab",
+                    "active": p is self._page,
+                }
+            )
+        return tabs
+
+    async def _broadcast_tabs(self) -> None:
+        from app.internal_action_interface import InternalActionInterface
+
+        adapter = InternalActionInterface.ui_adapter
+        if adapter is None or not hasattr(adapter, "_broadcast"):
+            return
+        try:
+            await adapter._broadcast(
+                {"type": "browser_tabs", "data": {"tabs": await self._tabs_payload()}}
+            )
+        except Exception as exc:
+            logger.debug("[WebAgent] tabs broadcast failed: %s", exc)
+
+    def _schedule_tabs(self) -> None:
+        try:
+            asyncio.ensure_future(self._broadcast_tabs())
+        except RuntimeError:
+            pass
+
+    async def list_tabs(self) -> Dict[str, Any]:
+        async with self._lock:
+            await self.ensure_started()
+            tabs = await self._tabs_payload()
+        await self._broadcast_tabs()
+        return {"status": "success", "tabs": tabs}
+
+    async def new_tab(self, url: Optional[str] = None) -> Dict[str, Any]:
+        async with self._lock:
+            await self.ensure_started()
+            page = await self._context.new_page()
+            self._page = page
+            self._track_page(page)
+            if url and url.strip():
+                u = url.strip()
+                if not u.startswith(("http://", "https://", "about:", "file://")):
+                    u = "https://" + u
+                try:
+                    await page.goto(u, timeout=30000, wait_until="domcontentloaded")
+                except Exception as exc:
+                    logger.debug("[WebAgent] new_tab goto failed: %s", exc)
+            await self._ensure_cursor()
+            await self._stream_frame()
+            await self._broadcast_tabs()
+            return {"status": "success", "url": page.url, "title": await page.title()}
+
+    async def switch_tab(self, index: int) -> Dict[str, Any]:
+        async with self._lock:
+            await self.ensure_started()
+            pages = self._open_pages()
+            if not (0 <= index < len(pages)):
+                return {"status": "error", "message": f"No tab at index {index}"}
+            self._page = pages[index]
+            try:
+                await self._page.bring_to_front()
+            except Exception:
+                pass
+            await self._stream_frame()
+            await self._broadcast_tabs()
+            return {"status": "success", "url": self._page.url}
+
+    async def close_tab(self, index: int) -> Dict[str, Any]:
+        async with self._lock:
+            await self.ensure_started()
+            pages = self._open_pages()
+            if not (0 <= index < len(pages)):
+                return {"status": "error", "message": f"No tab at index {index}"}
+            target = pages[index]
+            was_active = target is self._page
+            try:
+                await target.close()
+            except Exception:
+                pass
+            remaining = self._open_pages()
+            if was_active or self._page is None or self._page.is_closed():
+                self._page = remaining[-1] if remaining else None
+            if self._page is not None:
+                await self._stream_frame()
+            await self._broadcast_tabs()
+            return {"status": "success"}
 
 
 # Module-level singleton reused by every browser action.

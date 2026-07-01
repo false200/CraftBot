@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Globe, ArrowRight, Square, RotateCw, MousePointerClick, KeyRound } from 'lucide-react'
+import { Globe, ArrowRight, Square, RotateCw, MousePointerClick, KeyRound, ChevronLeft, ChevronRight, Plus, X, ShieldCheck, ShieldOff } from 'lucide-react'
 import { useWebSocket } from '../../contexts/WebSocketContext'
 import { useAppSelector } from '../../store/hooks'
 import { getSocketClient } from '../../store/socket/socketInstance'
@@ -33,6 +33,8 @@ export function WebAgentPage() {
 
   const [urlInput, setUrlInput] = useState('')
   const [showPasswords, setShowPasswords] = useState(false)
+  const [tabs, setTabs] = useState<Array<{ index: number; url: string; title: string; active: boolean }>>([])
+  const [adblock, setAdblock] = useState(true)
   const [chatWidth, setChatWidth] = useState(DEFAULT_CHAT_WIDTH)
   const [isResizing, setIsResizing] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -164,6 +166,39 @@ export function WebAgentPage() {
     getSocketClient().send('browser_nav', { target: 'reload' })
   }, [])
 
+  const goBack = useCallback(() => getSocketClient().send('browser_nav', { target: 'back' }), [])
+  const goForward = useCallback(() => getSocketClient().send('browser_nav', { target: 'forward' }), [])
+
+  // ── tabs ──────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const client = getSocketClient()
+    const unsub = client.onMessage('browser_tabs', (data: unknown) => {
+      const d = data as { tabs?: Array<{ index: number; url: string; title: string; active: boolean }> }
+      setTabs(d.tabs ?? [])
+    })
+    client.send('browser_tab', { action: 'list' })
+    return () => unsub()
+  }, [])
+
+  const newTab = useCallback(() => getSocketClient().send('browser_tab', { action: 'new' }), [])
+  const switchTab = useCallback((index: number) => getSocketClient().send('browser_tab', { action: 'switch', index }), [])
+  const closeTab = useCallback((index: number) => getSocketClient().send('browser_tab', { action: 'close', index }), [])
+
+  // ── ad blocker ────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const client = getSocketClient()
+    const unsub = client.onMessage('browser_adblock', (data: unknown) => {
+      const d = data as { enabled?: boolean }
+      if (typeof d.enabled === 'boolean') setAdblock(d.enabled)
+    })
+    client.send('browser_adblock', {}) // query current state
+    return () => unsub()
+  }, [])
+
+  const toggleAdblock = useCallback(() => {
+    getSocketClient().send('browser_adblock', { enabled: !adblock })
+  }, [adblock])
+
   // Stop the agent's running task (if any) so it stops driving the browser.
   const stop = useCallback(() => {
     if (runningTask) cancelTask(runningTask.id)
@@ -196,6 +231,12 @@ export function WebAgentPage() {
       {/* Right: the live browser — the agent AND you can control it */}
       <div className={styles.browserPanel}>
         <div className={styles.browserHeader}>
+          <button type="button" className={styles.headerBtn} onClick={goBack} title="Back" aria-label="Back">
+            <ChevronLeft size={16} />
+          </button>
+          <button type="button" className={styles.headerBtn} onClick={goForward} title="Forward" aria-label="Forward">
+            <ChevronRight size={16} />
+          </button>
           <form className={styles.urlForm} onSubmit={submitUrl}>
             <Globe size={15} className={styles.urlIcon} />
             <input
@@ -230,6 +271,16 @@ export function WebAgentPage() {
           </button>
           <button
             type="button"
+            className={`${styles.headerBtn} ${adblock ? styles.headerBtnOn : ''}`}
+            onClick={toggleAdblock}
+            title={adblock ? 'Ad blocker: ON (click to disable)' : 'Ad blocker: OFF (click to enable)'}
+            aria-label="Toggle ad blocker"
+            aria-pressed={adblock}
+          >
+            {adblock ? <ShieldCheck size={15} /> : <ShieldOff size={15} />}
+          </button>
+          <button
+            type="button"
             className={styles.headerBtn}
             onClick={() => setShowPasswords(true)}
             title="Saved passwords"
@@ -248,6 +299,32 @@ export function WebAgentPage() {
             <Square size={14} /> Stop
           </button>
         </div>
+
+        {tabs.length > 0 && (
+          <div className={styles.tabBar}>
+            {tabs.map(t => (
+              <div
+                key={t.index}
+                className={`${styles.tab} ${t.active ? styles.tabActive : ''}`}
+                onClick={() => switchTab(t.index)}
+                title={t.url}
+              >
+                <span className={styles.tabTitle}>{t.title || 'New tab'}</span>
+                <button
+                  className={styles.tabClose}
+                  onClick={e => { e.stopPropagation(); closeTab(t.index) }}
+                  title="Close tab"
+                  aria-label="Close tab"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+            <button className={styles.tabNew} onClick={newTab} title="New tab" aria-label="New tab">
+              <Plus size={14} />
+            </button>
+          </div>
+        )}
 
         <div
           className={`${styles.browserViewport} ${interactive ? styles.viewportInteractive : ''}`}

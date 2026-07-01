@@ -290,6 +290,71 @@ async def browser_login(input_data: dict) -> dict:
 
 
 @action(
+    name="browser_new_tab",
+    description=(
+        "Open a new browser tab and make it active (subsequent browser_read/click/"
+        "type act on it). Useful for working on several things at once — e.g. "
+        "comparing products across sites. Optionally pass a 'url' to open in it."
+    ),
+    mode="ALL",
+    execution_mode="internal",
+    action_sets=_SET,
+    parallelizable=False,
+    input_schema={
+        "url": {
+            "type": "string",
+            "example": "https://www.google.com",
+            "description": "Optional URL to open in the new tab. https:// added if missing.",
+        },
+    },
+    output_schema={
+        "status": {"type": "string", "example": "success", "description": "'success' or 'error'."},
+        "url": {"type": "string", "description": "URL of the new tab."},
+        "title": {"type": "string", "description": "Title of the new tab."},
+    },
+    test_payload={"simulated_mode": True},
+)
+async def browser_new_tab(input_data: dict) -> dict:
+    from app.browser.web_agent import get_session
+
+    if input_data.get("simulated_mode"):
+        return {"status": "success", "url": "", "title": ""}
+    return await get_session().new_tab(url=input_data.get("url"))
+
+
+@action(
+    name="browser_switch_tab",
+    description=(
+        "Switch to another open browser tab by its index (0-based, as shown in the "
+        "tab bar). Following browser_read/click/type act on that tab."
+    ),
+    mode="ALL",
+    execution_mode="internal",
+    action_sets=_SET,
+    parallelizable=False,
+    input_schema={
+        "index": {
+            "type": "integer",
+            "example": 0,
+            "description": "0-based index of the tab to switch to.",
+            "required": True,
+        },
+    },
+    output_schema={
+        "status": {"type": "string", "example": "success", "description": "'success' or 'error'."},
+        "url": {"type": "string", "description": "URL of the now-active tab."},
+    },
+    test_payload={"index": 0, "simulated_mode": True},
+)
+async def browser_switch_tab(input_data: dict) -> dict:
+    from app.browser.web_agent import get_session
+
+    if input_data.get("simulated_mode"):
+        return {"status": "success", "url": ""}
+    return await get_session().switch_tab(int(input_data.get("index", 0)))
+
+
+@action(
     name="browser_screenshot",
     description=(
         "Save a full-page screenshot of the current browser page to the workspace "

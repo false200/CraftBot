@@ -1577,6 +1577,14 @@ A quick Q&A will now begin to understand your objectives to serve you better:"""
             # URL bar / reload / back / forward — drive the page directly.
             await self._handle_browser_nav(data.get("target", ""))
 
+        elif msg_type == "browser_tab":
+            # Multiple tabs — new / switch / close / list.
+            await self._handle_browser_tab(data)
+
+        elif msg_type == "browser_adblock":
+            # Toggle / query the built-in ad blocker.
+            await self._handle_browser_adblock(data)
+
         # Password vault (Web Agent) — manage saved website logins.
         elif msg_type == "vault_list":
             await self._handle_vault_list()
@@ -3551,6 +3559,37 @@ A quick Q&A will now begin to understand your objectives to serve you better:"""
             await get_session().navigate(target)
         except Exception as e:
             logger.debug(f"[WebAgent] nav failed: {e}")
+
+    async def _handle_browser_tab(self, data: Dict[str, Any]) -> None:
+        """Tab management for the Web Agent browser (new/switch/close/list)."""
+        try:
+            from app.browser.web_agent import get_session
+
+            s = get_session()
+            action = data.get("action", "list")
+            if action == "new":
+                await s.new_tab(data.get("url"))
+            elif action == "switch":
+                await s.switch_tab(int(data.get("index", 0)))
+            elif action == "close":
+                await s.close_tab(int(data.get("index", 0)))
+            else:  # list
+                await s.list_tabs()
+        except Exception as e:
+            logger.debug(f"[WebAgent] tab op failed: {e}")
+
+    async def _handle_browser_adblock(self, data: Dict[str, Any]) -> None:
+        """Toggle the ad blocker (if 'enabled' given) or report current state."""
+        try:
+            from app.browser.web_agent import get_session
+
+            s = get_session()
+            if "enabled" in data:
+                await s.set_adblock(bool(data["enabled"]))
+            else:
+                await s.broadcast_adblock()
+        except Exception as e:
+            logger.debug(f"[WebAgent] adblock op failed: {e}")
 
     # ── password vault ────────────────────────────────────────────────────────
 
