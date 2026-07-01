@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
-import { Globe, ArrowRight, Square, RotateCw, MousePointerClick } from 'lucide-react'
+import { Globe, ArrowRight, Square, RotateCw, MousePointerClick, KeyRound } from 'lucide-react'
 import { useWebSocket } from '../../contexts/WebSocketContext'
 import { useAppSelector } from '../../store/hooks'
 import { getSocketClient } from '../../store/socket/socketInstance'
@@ -9,6 +9,7 @@ import {
   selectBrowserTitle,
 } from '../../store/selectors/agent'
 import { Chat } from '../../components/Chat'
+import { PasswordsPanel } from './PasswordsPanel'
 import type { ActionItem } from '../../types'
 import styles from './WebAgentPage.module.css'
 
@@ -31,11 +32,16 @@ export function WebAgentPage() {
   const browserTitle = useAppSelector(selectBrowserTitle)
 
   const [urlInput, setUrlInput] = useState('')
+  const [showPasswords, setShowPasswords] = useState(false)
   const [chatWidth, setChatWidth] = useState(DEFAULT_CHAT_WIDTH)
   const [isResizing, setIsResizing] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
   const imgRef = useRef<HTMLImageElement>(null)
+
+  // When on, YOUR clicks/typing/scrolling are sent to the page. Turn off to
+  // just watch (so you don't interfere while the agent is working).
+  const [interactive, setInteractive] = useState(true)
 
   // The one task currently running/waiting — used by the Stop button.
   const runningTask = useMemo<ActionItem | undefined>(() => {
@@ -115,6 +121,7 @@ export function WebAgentPage() {
     const el = viewportRef.current
     if (!el) return
     const onWheel = (e: WheelEvent) => {
+      if (!interactive) return
       const n = normFromEvent(e.clientX, e.clientY)
       if (!n) return
       e.preventDefault()
@@ -122,24 +129,26 @@ export function WebAgentPage() {
     }
     el.addEventListener('wheel', onWheel, { passive: false })
     return () => el.removeEventListener('wheel', onWheel)
-  }, [normFromEvent, sendInput])
+  }, [normFromEvent, sendInput, interactive])
 
   // ── pointer / keyboard handlers on the live view ─────────────────────────
   const onViewportClick = useCallback((e: React.MouseEvent) => {
+    if (!interactive) return
     const n = normFromEvent(e.clientX, e.clientY)
     if (!n) return
     viewportRef.current?.focus()
     sendInput({ kind: 'click', nx: n.nx, ny: n.ny })
-  }, [normFromEvent, sendInput])
+  }, [normFromEvent, sendInput, interactive])
 
   const onViewportKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (!interactive) return
     // Ignore browser/app shortcuts so we don't hijack copy/paste etc.
     if (e.ctrlKey || e.metaKey || e.altKey) return
     if (e.key.length === 1 || HANDLED_KEYS.has(e.key)) {
       e.preventDefault()
       sendInput({ kind: 'key', key: e.key })
     }
-  }, [sendInput])
+  }, [sendInput, interactive])
 
   // ── url bar / controls ───────────────────────────────────────────────────
   // URL bar and reload drive the page DIRECTLY (like a real browser) — instant,
@@ -202,11 +211,31 @@ export function WebAgentPage() {
               <ArrowRight size={15} />
             </button>
           </form>
-          <span className={styles.liveBadge} title="You can click, type and scroll here too">
-            <MousePointerClick size={13} /> Live · interactive
-          </span>
+          <button
+            type="button"
+            className={`${styles.interactiveToggle} ${interactive ? styles.interactiveOn : ''}`}
+            onClick={() => setInteractive(v => !v)}
+            title={
+              interactive
+                ? 'Interactive: your clicks/typing/scrolling control the browser. Click to switch to watch-only.'
+                : 'Watch-only: your input is ignored. Click to take control.'
+            }
+            aria-pressed={interactive}
+          >
+            <MousePointerClick size={13} />
+            {interactive ? 'Interactive' : 'Watch only'}
+          </button>
           <button type="button" className={styles.headerBtn} onClick={reload} title="Reload page" aria-label="Reload page">
             <RotateCw size={15} />
+          </button>
+          <button
+            type="button"
+            className={styles.headerBtn}
+            onClick={() => setShowPasswords(true)}
+            title="Saved passwords"
+            aria-label="Saved passwords"
+          >
+            <KeyRound size={15} />
           </button>
           <button
             type="button"
@@ -221,7 +250,7 @@ export function WebAgentPage() {
         </div>
 
         <div
-          className={styles.browserViewport}
+          className={`${styles.browserViewport} ${interactive ? styles.viewportInteractive : ''}`}
           ref={viewportRef}
           tabIndex={0}
           onClick={onViewportClick}
@@ -257,6 +286,8 @@ export function WebAgentPage() {
           </div>
         )}
       </div>
+
+      <PasswordsPanel open={showPasswords} onClose={() => setShowPasswords(false)} />
     </div>
   )
 }

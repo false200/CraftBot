@@ -1577,6 +1577,19 @@ A quick Q&A will now begin to understand your objectives to serve you better:"""
             # URL bar / reload / back / forward — drive the page directly.
             await self._handle_browser_nav(data.get("target", ""))
 
+        # Password vault (Web Agent) — manage saved website logins.
+        elif msg_type == "vault_list":
+            await self._handle_vault_list()
+
+        elif msg_type == "vault_add":
+            await self._handle_vault_add(data)
+
+        elif msg_type == "vault_update":
+            await self._handle_vault_update(data)
+
+        elif msg_type == "vault_delete":
+            await self._handle_vault_delete(data.get("id", ""))
+
         elif msg_type == "task_complete":
             task_id = data.get("taskId", "")
             await self._handle_task_complete(task_id)
@@ -3538,6 +3551,57 @@ A quick Q&A will now begin to understand your objectives to serve you better:"""
             await get_session().navigate(target)
         except Exception as e:
             logger.debug(f"[WebAgent] nav failed: {e}")
+
+    # ── password vault ────────────────────────────────────────────────────────
+
+    async def _handle_vault_list(self) -> None:
+        """Send saved logins (site + username only, never passwords) to the UI."""
+        try:
+            from app.browser.credential_vault import get_vault
+
+            await self._broadcast(
+                {"type": "vault_list", "data": {"entries": get_vault().list_entries()}}
+            )
+        except Exception as e:
+            logger.debug(f"[Vault] list failed: {e}")
+
+    async def _handle_vault_add(self, data: Dict[str, Any]) -> None:
+        try:
+            from app.browser.credential_vault import get_vault
+
+            get_vault().add_entry(
+                data.get("site", ""),
+                data.get("username", ""),
+                data.get("password", ""),
+                data.get("label", ""),
+            )
+            await self._handle_vault_list()
+        except Exception as e:
+            logger.debug(f"[Vault] add failed: {e}")
+
+    async def _handle_vault_update(self, data: Dict[str, Any]) -> None:
+        try:
+            from app.browser.credential_vault import get_vault
+
+            get_vault().update_entry(
+                data.get("id", ""),
+                site=data.get("site"),
+                username=data.get("username"),
+                password=data.get("password"),
+                label=data.get("label"),
+            )
+            await self._handle_vault_list()
+        except Exception as e:
+            logger.debug(f"[Vault] update failed: {e}")
+
+    async def _handle_vault_delete(self, entry_id: str) -> None:
+        try:
+            from app.browser.credential_vault import get_vault
+
+            get_vault().delete_entry(entry_id)
+            await self._handle_vault_list()
+        except Exception as e:
+            logger.debug(f"[Vault] delete failed: {e}")
 
     async def _handle_task_cancel(self, task_id: str) -> None:
         """Cancel a running task."""

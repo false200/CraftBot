@@ -609,6 +609,80 @@ class WebAgentSession:
                     ),
                 }
 
+    async def login(
+        self, site: Optional[str] = None, submit: bool = True
+    ) -> Dict[str, Any]:
+        """Fill the current page's login form from the saved credential vault.
+
+        The password is typed straight into the field and is NEVER returned, so
+        it can't leak into the LLM prompt or logs. Returns only the username.
+        """
+        from app.browser.credential_vault import get_vault, normalize_domain
+
+        async with self._lock:
+            await self.ensure_started()
+            page = self._page
+            domain = site or page.url
+            cred = get_vault().get_for_domain(domain)
+            if not cred:
+                return {
+                    "status": "error",
+                    "message": (
+                        f"No saved login for '{normalize_domain(domain)}'. "
+                        "Ask the user to add it in the Passwords panel."
+                    ),
+                }
+            try:
+                # Password field.
+                pw_el = await page.query_selector("input[type='password']:visible")
+                if pw_el is None:
+                    pw_el = await page.query_selector("input[type='password']")
+                if pw_el is None:
+                    return {
+                        "status": "error",
+                        "message": (
+                            "No password field on this page. Navigate to the "
+                            "site's login/sign-in page first, then call browser_login."
+                        ),
+                    }
+                # Username / email field (best-effort).
+                user_el = await page.query_selector(
+                    ", ".join(
+                        [
+                            "input[autocomplete='username']:visible",
+                            "input[type='email']:visible",
+                            "input[name*='user' i]:visible",
+                            "input[name*='email' i]:visible",
+                            "input[id*='user' i]:visible",
+                            "input[id*='email' i]:visible",
+                            "input[type='text']:visible",
+                        ]
+                    )
+                )
+                if user_el is not None and cred.get("username"):
+                    await user_el.fill(cred["username"])
+                await pw_el.fill(cred.get("password", ""))
+                if submit:
+                    await pw_el.press("Enter")
+                    try:
+                        await page.wait_for_load_state("domcontentloaded", timeout=8000)
+                    except Exception:
+                        pass
+                self._schedule_frame()
+                return {
+                    "status": "success",
+                    "site": cred.get("site", ""),
+                    "username": cred.get("username", ""),
+                    "url": page.url,
+                    "message": (
+                        f"Filled saved login for {cred.get('username', '')}"
+                        + (" and submitted." if submit else ".")
+                    ),
+                }
+            except Exception as exc:
+                self._schedule_frame()
+                return {"status": "error", "message": str(exc)}
+
     async def scroll(self, direction: str = "down", amount: int = 600) -> Dict[str, Any]:
         async with self._lock:
             await self.ensure_started()

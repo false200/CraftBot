@@ -57,3 +57,8 @@ agent_file_system/TASK_HISTORY.md
 docs/LIVING_UI_DEVELOPER_GUIDE.md
 agent_file_system/ACTIONS.md
 agent_bundle/
+# Web Agent: encrypted password vault + persistent browser profile (cookies/logins).
+# These contain secrets and MUST never be committed.
+**/.web_agent_vault.key
+**/.web_agent_vault.enc
+**/web_agent_profile/

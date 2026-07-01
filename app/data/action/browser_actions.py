@@ -245,6 +245,51 @@ async def browser_scroll(input_data: dict) -> dict:
 
 
 @action(
+    name="browser_login",
+    description=(
+        "Log into the CURRENT website using a login the user saved in their "
+        "password vault. First navigate to the site's sign-in page (so username "
+        "and password fields are visible), then call this. The password is typed "
+        "directly into the page — it is NEVER shown to you and never appears in "
+        "logs. If no saved login matches, ask the user to add it in the Passwords "
+        "panel. Optionally pass 'site' to choose which saved login to use."
+    ),
+    mode="ALL",
+    execution_mode="internal",
+    action_sets=_SET,
+    parallelizable=False,
+    input_schema={
+        "site": {
+            "type": "string",
+            "example": "amazon.com",
+            "description": "Optional domain to pick which saved login to use. Defaults to the current page's domain.",
+        },
+        "submit": {
+            "type": "boolean",
+            "example": True,
+            "description": "Press Enter to submit after filling. Defaults to true.",
+        },
+    },
+    output_schema={
+        "status": {"type": "string", "example": "success", "description": "'success' or 'error'."},
+        "site": {"type": "string", "description": "Domain the login was used for."},
+        "username": {"type": "string", "description": "Username filled (password is never returned)."},
+        "message": {"type": "string", "description": "Result or error message."},
+    },
+    test_payload={"simulated_mode": True},
+)
+async def browser_login(input_data: dict) -> dict:
+    from app.browser.web_agent import get_session
+
+    if input_data.get("simulated_mode"):
+        return {"status": "success", "site": "example.com", "username": "user@example.com", "message": "Simulated"}
+    return await get_session().login(
+        site=input_data.get("site"),
+        submit=bool(input_data.get("submit", True)),
+    )
+
+
+@action(
     name="browser_screenshot",
     description=(
         "Save a full-page screenshot of the current browser page to the workspace "
